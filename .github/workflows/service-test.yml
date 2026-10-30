@@ -1,0 +1,39 @@
+name: Datenverbindung testen
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/service-test.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: crypto-momentum-single-writer
+  cancel-in-progress: false
+
+jobs:
+  services:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      REPOSITORY_VISIBILITY: ${{ github.event.repository.visibility }}
+    steps:
+      - name: Code laden
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Python vorbereiten
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Filter und Budgetschutz testen
+        run: python -m unittest discover -s tests -v
+      - name: Telegram und Marktdaten testen
+        run: python agent.py check
+      - name: Einen X-Datensatz abrufen
+        run: python agent.py sample
