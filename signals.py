@@ -72,7 +72,8 @@ def normalise_tweet(row, now):
     username = author.get("userName") or author.get("username") or author.get("screen_name")
     if not tweet_id.isdigit() or not text or not username or created is None or created > now + 60:
         return None
-    links = row.get("links") or row.get("urls") or []
+    links = list(row.get("links") or row.get("urls") or [])
+    links.extend((row.get("entities") or {}).get("urls") or [])
     expanded = []
     for link in links:
         if isinstance(link, str):
@@ -80,7 +81,11 @@ def normalise_tweet(row, now):
         elif isinstance(link, dict):
             expanded.extend(str(link[k]) for k in ("expandedUrl", "expanded_url", "url") if link.get(k))
     stats = row.get("stats") or {}
+    unknown_counts = {re.sub(r"[^a-z]", "", str(key).lower())
+                      for key in (row.get("unknownCounts") or row.get("unknown_counts") or [])}
     def metric(*keys):
+        if any(re.sub(r"[^a-z]", "", key.lower()) in unknown_counts for key in keys):
+            return None
         for key in keys:
             val = number(row.get(key, stats.get(key)))
             if val is not None:

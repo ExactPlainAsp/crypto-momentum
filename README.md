@@ -1,8 +1,11 @@
 # Crypto Momentum: kostenlose Startversion
 
 Vorbereiteter Beobachtungsagent für X, kostenlose Marktdaten und Telegram.
-Stand: 30. Oktober 2026. Quellcode im GitHub-Repository bereitgestellt;
-Telegram-Kopplung und authentifizierte Live-Abnahme stehen noch aus.
+Stand: 30. Oktober 2026. Telegram ist gekoppelt; Telegram, Apify-Free,
+DexScreener und der Sicherheitsdienst wurden authentifiziert geprüft.
+Die Abnahme vollständig auswertbarer X-Posts steht noch aus. Der Zeitplan
+bleibt ausgeschaltet. Details der Datenprüfung werden nur an den bereits
+gekoppelten privaten Telegram-Chat geschickt.
 
 ## Was diese Version tut
 

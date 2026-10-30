@@ -303,14 +303,16 @@ def x_input(state, now, config, sample=False):
     seeds = "(" + " OR ".join("from:" + a for a in config["seed_accounts"]) + ")"
     watch = sorted((w for w in state["watch"].values() if w.get("last_post_at", 0) >= now - 7200),
                    key=lambda w: w.get("last_post_at", 0), reverse=True)
-    if phase == 1 and watch:
+    if sample:
+        terms = ["(solana OR memecoin) lang:en -filter:nativeretweets since_time:" + str(since)]
+    elif phase == 1 and watch:
         terms = ["(" + " OR ".join('"' + w["address"] + '"' for w in watch[:3]) + ") lang:en since_time:" + str(since)]
     elif phase == 2:
         terms = ["(solana OR memecoin OR base OR monad OR bsc) (CA OR contract) lang:en -filter:nativeretweets since_time:" + str(since)]
     else:
         terms = [seeds + " lang:en -filter:nativeretweets since_time:" + str(since)]
     return {"mode": "search", "searchTerms": terms, "queryType": "Latest", "lang": config["language"],
-            "maxItems": 1 if sample else config["max_rows_per_scan"], "outputVariant": "rich"}
+            "maxItems": 1 if sample else config["max_rows_per_scan"], "outputVariant": "rich", "fieldStyle": "camelCase"}
 
 
 def ingest(state, rows, now, config):
@@ -399,6 +401,9 @@ def scan(http, api, tg, state, now, config, mode):
     ingested = ingest(state, rows, now, config)
     api.save(state)
     if sample:
+        if not ingested:
+            tg.send(state["telegram"]["chat_id"], "X-Test noch nicht bestanden: Der Abruf hat keine auswertbaren Posts geliefert. Der Zeitplan bleibt ausgeschaltet. Dies ist eine technische Testmeldung.")
+            raise Stop("X-Test ohne auswertbare Posts. Keine erfolgreiche Datenabnahme")
         tg.send(state["telegram"]["chat_id"], f"Datenabruf-Test abgeschlossen: {ingested} gültige X-Datensätze. Dies ist keine Signalmeldung. Der Zeitplan bleibt bis zur Aktivierung ausgeschaltet.")
         print("X-Test erfolgreich. Kein Handelssignal erzeugt.")
         return

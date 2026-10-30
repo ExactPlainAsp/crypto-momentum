@@ -54,6 +54,26 @@ def trades():
 
 
 class Filters(unittest.TestCase):
+    def test_rich_tweet_native_dates_and_expanded_contract_link(self):
+        row = {"id": "123", "text": "Research link", "createdAt": "Fri Oct 30 11:00:00 +0000 2026",
+               "author": {"username": "researcher", "createdAt": "Tue Jun 02 20:12:29 +0000 2009",
+                          "followers": 2000, "following": 50},
+               "replyCount": 0, "retweetCount": 3,
+               "entities": {"urls": [{"expanded_url": "https://example.com/token/" + CA}]}}
+        t = normalise_tweet(row, NOW)
+        self.assertIn(CA, t["addresses"])
+        self.assertIsNotNone(t["author_created"])
+        self.assertEqual(t["reply_count"], 0)
+        self.assertEqual(t["retweet_count"], 3)
+
+    def test_provider_unknown_counts_never_become_real_zero(self):
+        row = {"id": "123", "text": "Research", "createdAt": NOW-60,
+               "author": {"username": "researcher"}, "replyCount": 0, "retweetCount": 0,
+               "unknownCounts": ["replyCount", "retweetCount"]}
+        t = normalise_tweet(row, NOW)
+        self.assertIsNone(t["reply_count"])
+        self.assertIsNone(t["retweet_count"])
+
     def test_market_cap_missing_never_uses_fdv(self):
         p = pair(); p.pop("marketCap")
         m, f = select_market([p], CA, C, NOW)
@@ -218,6 +238,20 @@ class CostGuards(unittest.TestCase):
             def budget(self): return {"remaining": .01}
             def start_x(self, *args): raise AssertionError("Must not start")
         with self.assertRaises(Stop): scan(None, API(), None, {}, NOW, C, "observe")
+
+    def test_empty_sample_cannot_report_success(self):
+        class API:
+            def budget(self): return {"remaining": 2}
+            def finish_x(self, run): return []
+            def save(self, state): pass
+        class TG:
+            def send(self, chat, text):
+                self.message = text
+        state = {"schema": 1, "pending_run": {"id": "run"}, "tweets": {}, "watch": {},
+                 "markets": {}, "alerts": [], "audit": [], "telegram": {"chat_id": 10}}
+        tg = TG()
+        with self.assertRaises(Stop): scan(None, API(), tg, state, NOW, C, "sample")
+        self.assertIn("noch nicht bestanden", tg.message)
 
     def test_cap_crossing_before_delivery_prevents_notification(self):
         class API:
