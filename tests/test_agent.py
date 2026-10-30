@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 from agent import (ActorFinishedError, Stop, alert_slots, ingest, row_price,
-                   scan, validate_free_plan)
+                   pairing_candidates, scan, validate_free_plan)
 from signals import (addresses, confirmed, normalise_tweet, number,
                      security_checks, select_market, social_metrics, trade_sample)
 
@@ -240,6 +240,49 @@ class CostGuards(unittest.TestCase):
               patch("agent.time.time", return_value=NOW)):
             scan(None, API(), TG(), state, NOW, C, "signals")
         self.assertEqual(state["alerts"], [])
+
+
+class Pairing(unittest.TestCase):
+    CODE = "a-private-test-code-123456789"
+
+    def update(self, text, chat=10, **changes):
+        m = {"chat": {"id": chat, "type": "private"}, "from": {"id": chat, "is_bot": False},
+             "date": NOW-5, "text": text}
+        m.update(changes)
+        return {"message": m}
+
+    def test_whitespace_and_qualified_start_are_supported(self):
+        for command in ["/start "+self.CODE, "  /start   "+self.CODE+"\n", "/start@MyBot\n"+self.CODE]:
+            found, counts = pairing_candidates([self.update(command)], self.CODE, "MyBot", NOW)
+            self.assertEqual(found, {10}); self.assertEqual(counts["start_with_code"], 1)
+
+    def test_bare_start_and_wrong_secret_do_not_pair(self):
+        rows = [self.update("/start"), self.update("/start incorrect-code-123456789")]
+        found, counts = pairing_candidates(rows, self.CODE, "MyBot", NOW)
+        self.assertFalse(found); self.assertEqual(counts["bare_start"], 1)
+        self.assertEqual(counts["start_with_code"], 1)
+        self.assertNotIn(self.CODE, str(counts))
+
+    def test_different_bot_and_old_or_group_messages_do_not_pair(self):
+        rows = [self.update("/start@OtherBot "+self.CODE),
+                self.update("/start "+self.CODE, date=NOW-90000),
+                self.update("/start "+self.CODE, chat={"id": 10, "type": "group"})]
+        # Build the group row explicitly: chat= is the helper's identifier argument.
+        rows[2]["message"]["chat"] = {"id": 10, "type": "group"}
+        found, _ = pairing_candidates(rows, self.CODE, "MyBot", NOW)
+        self.assertFalse(found)
+
+    def test_unicode_secret_is_supported_but_remains_case_sensitive(self):
+        code = "Mein-geheimer-Wächter-Code-2026"
+        found, _ = pairing_candidates([self.update("/start "+code)], code, "MyBot", NOW)
+        self.assertEqual(found, {10})
+        found, _ = pairing_candidates([self.update("/start "+code.lower())], code, "MyBot", NOW)
+        self.assertFalse(found)
+
+    def test_multiple_matching_chats_remain_ambiguous(self):
+        found, _ = pairing_candidates([self.update("/start "+self.CODE, chat=10),
+                                      self.update("/start "+self.CODE, chat=20)], self.CODE, "MyBot", NOW)
+        self.assertEqual(found, {10,20})
 
 
 if __name__ == "__main__":

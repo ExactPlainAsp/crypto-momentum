@@ -7,6 +7,7 @@ All live signal alerts are explicitly labelled research observations.
 from __future__ import annotations
 
 import argparse
+import hmac
 import html
 import json
 import os
@@ -179,26 +180,65 @@ class Telegram:
                                          "link_preview_options": {"is_disabled": True}})
 
 
+def pairing_candidates(updates, code, bot_username, now):
+    """Find a private chat using the exact secret, allowing command whitespace.
+
+    Return only counts as diagnostics. Never return received text or secret parts.
+    """
+    matches = set()
+    counts = {"private_messages": 0, "bare_start": 0, "start_with_code": 0}
+    commands = {"/start", "/start@" + bot_username.lower()}
+    for update in updates:
+        message = update.get("message") or {}
+        chat = message.get("chat") or {}
+        date = number(message.get("date"))
+        sender = message.get("from") or {}
+        if (chat.get("type") != "private" or sender.get("is_bot") or date is None
+            or not now - 86400 < date <= now + 60 or chat.get("id") is None):
+            continue
+        counts["private_messages"] += 1
+        text = message.get("text")
+        if not isinstance(text, str):
+            continue
+        parts = text.strip().split(maxsplit=1)
+        if not parts or parts[0].lower() not in commands:
+            continue
+        if len(parts) == 1:
+            counts["bare_start"] += 1
+            continue
+        counts["start_with_code"] += 1
+        supplied = parts[1].strip()
+        if hmac.compare_digest(supplied.encode("utf-8"), code.encode("utf-8")):
+            matches.add(chat["id"])
+    return matches, counts
+
+
 def pair_telegram(tg, state, apify, now):
     code = secret("TELEGRAM_PAIR_CODE")
     if len(code) < 20:
         raise Stop("Kopplungscode muss mindestens 20 Zeichen lang sein")
     bot = tg.call("getMe")
+    username = bot.get("username") or ""
+    print("Erreichbarer Telegram-Bot: @" + username)
     if (tg.call("getWebhookInfo") or {}).get("url"):
         raise Stop("Dieser Bot hat bereits einen Webhook; bitte einen eigenen neuen Bot verwenden")
-    messages = tg.call("getUpdates", {"limit": 100, "timeout": 0, "allowed_updates": ["message"]})
-    matches = set()
-    expected = "/start " + code
-    for update in messages:
-        message = update.get("message") or {}
-        chat = message.get("chat") or {}
-        if (chat.get("type") == "private" and message.get("text") == expected
-            and now - 86400 < message.get("date", 0) <= now + 60
-            and not (message.get("from") or {}).get("is_bot")):
-            matches.add(chat.get("id"))
-    matches.discard(None)
+    # This dedicated new bot has no other consumer. Read its latest pending
+    # messages so old updates cannot hide a recent valid pairing command.
+    messages = tg.call("getUpdates", {"offset": -100, "limit": 100, "timeout": 0, "allowed_updates": ["message"]})
+    matches, counts = pairing_candidates(messages, code, username, now)
+    print("Aktuelle private Nachrichten: " + str(counts["private_messages"]))
+    print("Startbefehle mit Code: " + str(counts["start_with_code"]))
+    print("Startbefehle ohne Code: " + str(counts["bare_start"]))
+    if not matches:
+        if counts["start_with_code"]:
+            reason = "Der empfangene Startcode stimmt nicht mit TELEGRAM_PAIR_CODE überein."
+        elif counts["private_messages"]:
+            reason = "Es liegt keine Startnachricht mit Kopplungscode vor. Der Startknopf allein genügt nicht."
+        else:
+            reason = "Der Bot hat noch keine aktuelle private Nachricht erhalten."
+        raise Stop(reason + " Sende /start gefolgt von deinem geheimen Kopplungscode an @" + username + ".")
     if len(matches) != 1:
-        raise Stop("Kopplung nicht eindeutig. Sende deinem Bot /start gefolgt von deinem geheimen Kopplungscode und starte pair erneut")
+        raise Stop("Derselbe Kopplungscode wurde in mehreren Chats verwendet. Bitte einen neuen Code setzen und nur deinem eigenen Bot senden")
     chat_id = matches.pop()
     state["telegram"] = {"chat_id": chat_id, "bot_id": bot["id"], "paired_at": now}
     apify.save(state)
