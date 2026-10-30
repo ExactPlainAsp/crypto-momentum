@@ -1,0 +1,94 @@
+name: X-Datenquelle bestätigen
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/source-test.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: crypto-momentum-single-writer
+  cancel-in-progress: false
+
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      REPOSITORY_VISIBILITY: ${{ github.event.repository.visibility }}
+    steps:
+      - name: Code laden
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Python vorbereiten
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Genau einen zusätzlichen Testdatensatz aus dem Gratisguthaben prüfen
+        run: |
+          python - <<'PY'
+          import json
+          import time
+          from agent import Apify, HTTP, Stop, Telegram, ingest, secret
+          from signals import normalise_tweet
+          try:
+              config = json.load(open("config.json"))
+              http = HTTP()
+              api = Apify(http, secret("APIFY_TOKEN"), config)
+              tg = Telegram(http, secret("TELEGRAM_BOT_TOKEN"))
+              budget = api.budget()
+              if budget["remaining"] <= config["credit_reserve_usd"]:
+                  raise Stop("Gratisbudget-Grenze erreicht")
+              state = api.load()
+              link = state.get("telegram") or {}
+              if not link.get("chat_id") or link.get("bot_id") != tg.call("getMe").get("id"):
+                  raise Stop("Telegram-Verbindung muss erneut geprüft werden")
+              if state.get("pending_run"):
+                  raise Stop("Eine reguläre X-Abfrage läuft noch")
+              probe = state.setdefault("connection_probe_v1", {})
+              if probe.get("passed"):
+                  print("X-Datenquelle bereits erfolgreich bestätigt.")
+                  raise SystemExit(0)
+              now = time.time()
+              if not probe.get("attempted"):
+                  probe["attempted"] = now
+                  api.save(state)
+                  inputs = {
+                      "mode": "search",
+                      "searchTerms": ["(solana OR memecoin) lang:en -filter:nativeretweets since_time:" + str(int(now - 7200))],
+                      "queryType": "Latest",
+                      "maxItems": 1,
+                      "outputVariant": "rich",
+                      "fieldStyle": "camelCase"
+                  }
+                  probe["run_id"] = api.start_x(inputs, now)
+                  api.save(state)
+              if not probe.get("run_id"):
+                  raise Stop("Teststart bereits reserviert. Kein automatischer zweiter Start")
+              rows = api.finish_x(probe["run_id"])
+              valid = [t for row in rows if (t := normalise_tweet(row, now)) is not None]
+              complete = [t for t in valid if all(t.get(k) is not None for k in ("author_created", "followers", "following", "reply_count", "retweet_count"))]
+              probe["finished"] = time.time()
+              probe["passed"] = bool(complete)
+              if valid:
+                  ingest(state, rows, now, config)
+              api.save(state)
+              if not complete:
+                  tg.send(link["chat_id"], "Der zusätzliche X-Test hat noch keine vollständig auswertbaren Posts geliefert. Der Zeitplan bleibt ausgeschaltet. Dies ist eine technische Testmeldung.")
+                  raise Stop("X-Datenquelle noch nicht bestätigt. Diagnose privat per Telegram zugestellt")
+              tg.send(link["chat_id"], "X-Datenquelle bestätigt: Der Live-Test liefert einen auswertbaren Post samt Accountalter, Followern, Following, Replies und Retweets. Dies ist eine technische Testmeldung. Der Zeitplan ist noch ausgeschaltet.")
+              print("X-Datenquelle erfolgreich bestätigt. Keine privaten Diagnosedaten protokolliert.")
+          except Stop as exc:
+              print("GESTOPPT:", str(exc))
+              raise SystemExit(1)
+          except Exception:
+              print("GESTOPPT: Datenprüfung fehlgeschlagen. Keine privaten Diagnosedaten protokolliert.")
+              raise SystemExit(1)
+          PY
