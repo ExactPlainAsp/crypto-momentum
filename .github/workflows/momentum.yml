@@ -1,0 +1,56 @@
+name: Momentum-Wächter
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "pair: Telegram koppeln; check: Dienste testen; sample: X testen; observe: prüfen; signals: Beobachtungen senden"
+        required: true
+        type: choice
+        default: check
+        options: [pair, check, sample, observe, signals]
+  schedule:
+    - cron: '7,37 * * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: crypto-momentum-single-writer
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    if: github.event_name == 'workflow_dispatch' || vars.MONITOR_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_PAIR_CODE: ${{ secrets.TELEGRAM_PAIR_CODE }}
+      PORTFOLIO_CHF: ${{ secrets.PORTFOLIO_CHF }}
+      SIGNAL_ALERTS_ENABLED: ${{ vars.SIGNAL_ALERTS_ENABLED }}
+      REPOSITORY_VISIBILITY: ${{ github.event.repository.visibility }}
+    steps:
+      - name: Code laden
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Python vorbereiten
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Filter und Budgetschutz testen
+        run: python -m unittest discover -s tests -v
+      - name: Gewählten Modus ausführen
+        env:
+          REQUESTED_MODE: ${{ inputs.mode }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            python agent.py "$REQUESTED_MODE"
+          elif [ "$SIGNAL_ALERTS_ENABLED" = "true" ]; then
+            python agent.py signals
+          else
+            python agent.py observe
+          fi
