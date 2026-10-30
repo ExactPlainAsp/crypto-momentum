@@ -1,7 +1,8 @@
 # Crypto Momentum: kostenlose Startversion
 
 Vorbereiteter Beobachtungsagent für X, kostenlose Marktdaten und Telegram.
-Stand: 30. Oktober 2026. Noch nicht in einem Benutzerkonto bereitgestellt.
+Stand: 30. Oktober 2026. Quellcode im GitHub-Repository bereitgestellt;
+Telegram-Kopplung und authentifizierte Live-Abnahme stehen noch aus.
 
 ## Was diese Version tut
 
@@ -202,9 +203,12 @@ nach beobachteten Daten erfolgen, ohne die fachlichen Pflichtfilter aufzuweichen
 * Lokale Filter- und Budgettests ausgeführt.
 * Öffentliche DexScreener-, GoPlus- und GeckoTerminal-Endpunkte sowie das aktuelle
   öffentliche Actor-Preismodell abgefragt.
-* Keine Benutzer-Tokens vorhanden, keine Kopplung vorgenommen, kein Actor im
-  Benutzerkonto gestartet, keine Benutzernachricht versendet, kein Repository
-  erstellt und kein Zeitplan aktiviert.
+* Quellcode und Workflows im GitHub-Repository bereitgestellt. Alle 31 Tests
+  bestehen auch auf dem GitHub-Runner. Der zusätzliche Workflow `Einrichtung
+  prüfen` meldet ausschliesslich, ob die benötigten Secrets gesetzt sind.
+* Zugangsschlüssel bleiben in geschützten GitHub-Secrets. Telegram-Kopplung,
+  authentifizierter X-Abruf und Fomo-Nettoerfolg sind noch nicht live abgenommen.
+  Die Überwachung wurde nicht aktiviert.
 * Live-Abnahme von X und Telegram sowie Prüfung des realen Gratisverbrauchs sind
   die nächsten Schritte. Der Bot ist bis dahin nicht betriebsbereit.
 
