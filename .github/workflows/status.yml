@@ -1,0 +1,67 @@
+name: Betriebsstatus prüfen
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/status.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: crypto-momentum-single-writer
+  cancel-in-progress: false
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+    steps:
+      - name: Code laden
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Python vorbereiten
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Diagnose privat an den gekoppelten Telegram-Chat senden
+        run: |
+          python - <<'PY'
+          import json
+          from agent import Apify, HTTP, Stop, Telegram, secret
+          try:
+              config = json.load(open("config.json"))
+              http = HTTP()
+              api = Apify(http, secret("APIFY_TOKEN"), config)
+              budget = api.budget()
+              state = api.load()
+              tg = Telegram(http, secret("TELEGRAM_BOT_TOKEN"))
+              link = state.get("telegram") or {}
+              if not link.get("chat_id") or link.get("bot_id") != tg.call("getMe").get("id"):
+                  raise Stop("Verbindung muss erneut geprüft werden")
+              tweets = list(state.get("tweets", {}).values())
+              complete = sum(all(t.get(k) is not None for k in ("author_created", "followers", "following", "reply_count", "retweet_count")) for t in tweets)
+              text = (
+                  "Private Datenprüfung abgeschlossen.\n"
+                  f"Gespeicherte X-Posts: {len(tweets)}\n"
+                  f"Davon mit den nötigen Account- und Engagementdaten: {complete}\n"
+                  f"Gratisguthaben bisher beansprucht: USD {budget['used']:.4f}\n"
+                  "Dies ist eine technische Testmeldung. Der Zeitplan ist noch nicht aktiviert."
+              )
+              tg.send(link["chat_id"], text)
+              if not tweets or not complete:
+                  raise Stop("X-Datenprüfung noch nicht bestanden. Details stehen nur im privaten Telegram-Chat")
+              print("Statusprüfung erfolgreich. Details stehen nur im privaten Telegram-Chat.")
+          except Stop as exc:
+              print("GESTOPPT:", str(exc))
+              raise SystemExit(1)
+          except Exception:
+              print("GESTOPPT: Statusprüfung fehlgeschlagen. Keine privaten Diagnosedaten protokolliert.")
+              raise SystemExit(1)
+          PY
