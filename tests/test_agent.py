@@ -240,6 +240,17 @@ class CostGuards(unittest.TestCase):
             def start_x(self, *args): raise AssertionError("Must not start")
         with self.assertRaises(Stop): scan(None, API(), None, {}, NOW, C, "observe")
 
+    def test_duplicate_observation_slot_is_skipped_without_another_actor(self):
+        class API:
+            def budget(self): return {"remaining": 2}
+            def start_x(self, *args): raise AssertionError("Must not start another run")
+            def save(self, state): raise AssertionError("Must not rewrite a reserved slot")
+        class TG:
+            def send(self, *args): raise AssertionError("Must not notify on a skipped slot")
+        for mode in ["observe", "signals"]:
+            state = {"reserved_bucket": int(NOW//1800)}
+            scan(None, API(), TG(), state, NOW, C, mode)
+
     def test_empty_sample_cannot_report_success(self):
         class API:
             def budget(self): return {"remaining": 2}

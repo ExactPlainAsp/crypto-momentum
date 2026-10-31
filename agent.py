@@ -437,6 +437,9 @@ def scan(http, api, tg, state, now, config, mode):
         state.pop("pending_run", None)
     else:
         if state.get("reserved_bucket") == bucket:
+            if mode in {"observe", "signals"}:
+                print("Zeitfenster bereits verarbeitet. Kein weiterer X-Abruf erforderlich.")
+                return
             raise Stop("Dieses 30-Minuten-Fenster wurde bereits verwendet")
         state["reserved_bucket"] = bucket
         state.setdefault("started_at", now)
