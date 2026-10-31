@@ -253,6 +253,27 @@ class CostGuards(unittest.TestCase):
         with self.assertRaises(Stop): scan(None, API(), tg, state, NOW, C, "sample")
         self.assertIn("noch nicht bestanden", tg.message)
 
+    def test_sample_requires_complete_profile_before_verification(self):
+        row = {"id": "123", "text": "A research note", "createdAt": NOW-60,
+               "author": {"username": "researcher", "followers": 2000},
+               "replyCount": 0, "retweetCount": 1}
+        class API:
+            def budget(self): return {"remaining": 2}
+            def finish_x(self, run): return [row]
+            def save(self, state): pass
+        class TG:
+            def send(self, chat, text): pass
+        def state():
+            return {"schema": 1, "pending_run": {"id": "run"}, "tweets": {}, "watch": {},
+                    "markets": {}, "alerts": [], "audit": [], "telegram": {"chat_id": 10}}
+        missing = state()
+        with self.assertRaises(Stop): scan(None, API(), TG(), missing, NOW, C, "sample")
+        self.assertNotIn("source_verified_at", missing)
+        row["author"].update({"createdAt": NOW-400*86400, "following": 50})
+        complete = state()
+        scan(None, API(), TG(), complete, NOW, C, "sample")
+        self.assertEqual(complete["source_verified_at"], NOW)
+
     def test_cap_crossing_before_delivery_prevents_notification(self):
         class API:
             def budget(self): return {"remaining": 2}

@@ -404,9 +404,14 @@ def scan(http, api, tg, state, now, config, mode):
     ingested = ingest(state, rows, now, config)
     api.save(state)
     if sample:
-        if not ingested:
-            tg.send(state["telegram"]["chat_id"], "X-Test noch nicht bestanden: Der Abruf hat keine auswertbaren Posts geliefert. Der Zeitplan bleibt ausgeschaltet. Dies ist eine technische Testmeldung.")
-            raise Stop("X-Test ohne auswertbare Posts. Keine erfolgreiche Datenabnahme")
+        parsed = [normalise_tweet(row, now) for row in rows]
+        complete = any(t is not None and all(t.get(k) is not None for k in
+                       ("author_created", "followers", "following", "reply_count", "retweet_count")) for t in parsed)
+        if not ingested or not complete:
+            tg.send(state["telegram"]["chat_id"], "X-Test noch nicht bestanden: Der Abruf hat keine vollständig auswertbaren Posts geliefert. Der Zeitplan bleibt ausgeschaltet. Dies ist eine technische Testmeldung.")
+            raise Stop("X-Test ohne vollständig auswertbare Posts. Keine erfolgreiche Datenabnahme")
+        state["source_verified_at"] = now
+        api.save(state)
         tg.send(state["telegram"]["chat_id"], f"Datenabruf-Test abgeschlossen: {ingested} gültige X-Datensätze. Dies ist keine Signalmeldung. Der Zeitplan bleibt bis zur Aktivierung ausgeschaltet.")
         print("X-Test erfolgreich. Kein Handelssignal erzeugt.")
         return
@@ -472,9 +477,7 @@ def scan(http, api, tg, state, now, config, mode):
             tg.send(state["telegram"]["chat_id"], message(m, s, t, score, config))
             state["alerts"][-1]["status"] = "sent"
             api.save(state)
-    print(f"Prüfung abgeschlossen: {ingested} X-Datensätze, {len(candidates)} Kandidaten, {len(ready)} bestätigte Beobachtungen. Modus: {mode}.")
-    for reason, count in reasons.most_common(6):
-        print(f"  {count} × {reason}")
+    print(f"Prüfung abgeschlossen. Modus: {mode}. Ergebnisse liegen ausschliesslich im privaten Zustand.")
 
 
 def main():
@@ -508,7 +511,7 @@ def main():
         if not proof:
             raise Stop("Sicherheitsdienst-Verbindungstest fehlgeschlagen")
         tg.send(link["chat_id"], "Verbindungstest erfolgreich: Telegram, Apify-Free, DexScreener und Sicherheitsdienst erreichbar. X-Abruf wird separat mit sample getestet. Keine Überwachung aktiviert.")
-        print(f"Verbindungstest erfolgreich. Gratisguthaben bisher beansprucht: USD {budget['used']:.3f}.")
+        print("Verbindungstest erfolgreich. Gratisbudget geprüft.")
         return
     scan(http, api, tg, state, now, config, args.mode)
 
