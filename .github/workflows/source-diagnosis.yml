@@ -1,0 +1,35 @@
+name: Öffentlichen X-Beispielpost prüfen
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/source-diagnosis.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: crypto-momentum-single-writer
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+    steps:
+      - name: Code laden
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Python vorbereiten
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Diagnoseausgabe auf feste technische Fehlercodes beschränken
+        run: python -m unittest discover -s tests -q
+      - name: Dokumentierten öffentlichen Beispielpost prüfen
+        run: python diagnose_x.py
