@@ -7,7 +7,8 @@ from unittest.mock import patch
 from datetime import datetime
 from pathlib import Path
 
-from agent import (ActorFinishedError, Apify, Stop, alert_slots, ingest, row_price,
+from agent import (ActorFinishedError, Apify, Stop, activate_observer, alert_slots, ingest, row_price,
+                   send_review_if_due,
                    pairing_candidates, scan, validate_free_plan)
 from signals import (addresses, confirmed, normalise_tweet, number,
                      security_checks, select_market, social_metrics, trade_sample)
@@ -295,6 +296,60 @@ class CostGuards(unittest.TestCase):
               patch("agent.time.time", return_value=NOW)):
             scan(None, API(), TG(), state, NOW, C, "signals")
         self.assertEqual(state["alerts"], [])
+
+
+class ObserverLifecycle(unittest.TestCase):
+    class API:
+        def save(self, state): self.saved = copy.deepcopy(state)
+    class TG:
+        def __init__(self): self.sent = []
+        def send(self, chat, text): self.sent.append(text)
+
+    def test_activation_requires_recent_complete_source_verification(self):
+        for verified in [None, NOW-86401, NOW+1]:
+            state = {"source_verified_at": verified, "watch": {}, "telegram": {"chat_id": 10}}
+            tg = self.TG()
+            with patch.dict("os.environ", {"MONITOR_ENABLED": "true"}):
+                with self.assertRaises(Stop): activate_observer(tg, state, self.API(), NOW)
+            self.assertFalse(tg.sent)
+            self.assertNotIn("observer_started_at", state)
+
+    def test_activation_resets_warmup_once_and_does_not_repeat_notice(self):
+        state = {"source_verified_at": NOW-60, "started_at": NOW-86400,
+                 "watch": {CA: {"confirmations": 1, "last_eligible_at": NOW-60}},
+                 "telegram": {"chat_id": 10}}
+        tg = self.TG()
+        with patch.dict("os.environ", {"MONITOR_ENABLED": "true", "SIGNAL_ALERTS_ENABLED": "false"}):
+            activate_observer(tg, state, self.API(), NOW)
+            activate_observer(tg, state, self.API(), NOW+1800)
+        self.assertEqual(state["started_at"], NOW)
+        self.assertEqual(state["watch"][CA]["confirmations"], 0)
+        self.assertEqual(len(tg.sent), 1)
+
+    def test_observation_cannot_start_with_signal_alerts_already_enabled(self):
+        state = {"source_verified_at": NOW, "watch": {}, "telegram": {"chat_id": 10}}
+        with patch.dict("os.environ", {"MONITOR_ENABLED": "true", "SIGNAL_ALERTS_ENABLED": "true"}):
+            with self.assertRaises(Stop): activate_observer(self.TG(), state, self.API(), NOW)
+        self.assertNotIn("observer_started_at", state)
+
+    def test_explicit_schedule_pause_is_respected(self):
+        state = {"source_verified_at": NOW, "watch": {}, "telegram": {"chat_id": 10}}
+        with patch.dict("os.environ", {"MONITOR_ENABLED": "false"}):
+            with self.assertRaises(Stop): activate_observer(self.TG(), state, self.API(), NOW)
+        self.assertNotIn("observer_started_at", state)
+
+    def test_private_review_is_sent_once_after_48_hours(self):
+        state = {"observer_started_at": NOW-48*3600, "audit": [{"at": NOW-60, "mode": "observe",
+                 "rows": 16, "candidates": 1, "ready": 0, "rejections": {"Pflichtdaten fehlen": 1}}],
+                 "telegram": {"chat_id": 10}}
+        tg = self.TG(); api = self.API()
+        send_review_if_due(tg, state, api, NOW-1, {"used": 1})
+        self.assertFalse(tg.sent)
+        send_review_if_due(tg, state, api, NOW, {"used": 1})
+        send_review_if_due(tg, state, api, NOW+1800, {"used": 1})
+        self.assertEqual(len(tg.sent), 1)
+        self.assertEqual(state["review_notice"], "sent")
+        self.assertIn("Pflichtdaten fehlen", tg.sent[0])
 
 
 class SpendingLimit(unittest.TestCase):

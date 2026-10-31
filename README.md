@@ -1,11 +1,12 @@
 # Crypto Momentum: kostenlose Startversion
 
 Vorbereiteter Beobachtungsagent für X, kostenlose Marktdaten und Telegram.
-Stand: 30. Oktober 2026. Telegram ist gekoppelt; Telegram, Apify-Free,
-DexScreener und der Sicherheitsdienst wurden authentifiziert geprüft.
-Die Abnahme vollständig auswertbarer X-Posts steht noch aus. Der Zeitplan
-bleibt ausgeschaltet. Details der Datenprüfung werden nur an den bereits
-gekoppelten privaten Telegram-Chat geschickt.
+Stand: 31. Oktober 2026. Telegram, Apify-Free, DexScreener und der
+Sicherheitsdienst wurden authentifiziert geprüft. Die aktuelle Crypto-Suche
+liefert einen Post mit den nötigen Account- und Engagementdaten; die private
+Testbestätigung wurde von Telegram angenommen. Die Beobachtungsphase und ihr
+einmaliger privater Prüfbericht nach ungefähr 48 Stunden sind vorbereitet.
+Der Zeitplan bleibt bis zur ausdrücklichen Startfreigabe ausgeschaltet.
 
 ## Was diese Version tut
 
@@ -88,7 +89,13 @@ die gesamte monatliche Kontonutzung kontrolliert. Ab einer Nutzung von ungefähr
 USD 4.30 wird kein neuer X-Lauf gestartet. Das lässt Reserve unter dem
 konfigurierten Limit von USD 4.50 und dem monatlichen USD-5-Gratisguthaben.
 
-Ein einzelner Actor-Lauf erhält eine Ausgabengrenze und 45 Sekunden Laufzeit.
+Ein einzelner Actor-Lauf erhält eine auf volle US-Cents aufgerundete
+Ausgabengrenze, derzeit USD 0.01, und 45 Sekunden Laufzeit. Das ist eine
+Obergrenze, keine pauschale Gebühr. `maxItems` bleibt unverändert. Ein Limit
+von Bruchteilen eines Cents hatte die Live-Tests bereits vor der Lieferung
+eines Posts mit `budget_limited` beendet. Mit dem korrigierten Limit wurden
+der öffentliche Beispielpost und danach die aktuelle Crypto-Suche erfolgreich
+abgenommen. Preisprüfung und monatlicher Gratisbudget-Stopp bleiben aktiv.
 X-Läufe werden nicht blind wiederholt. Beim nächsten Durchlauf wird ein noch
 laufender Auftrag nur abgefragt. Andere Nutzung desselben Apify-Kontos reduziert
 das verfügbare Guthaben. Bei Erreichen der Grenze pausieren X-Abfragen bis zum
@@ -143,22 +150,32 @@ eintragen. Nur die dafür vorgesehenen geschützten Secrets verwenden.
    Telegram ankommen.
 8. Mit `sample` genau einen X-Datensatz abrufen. Dieser Test verbraucht einen
    kleinen Teil des kostenlosen Kontingents und sendet eine Testbestätigung.
-   Die Dienste wurden lokal erreichbar getestet, der authentifizierte X-Abruf
-   muss hier erstmals mit dem eigenen Konto bestätigt werden.
+   Dieser Test muss einen aktuellen Post mit vollständigen Pflichtdaten liefern.
+   Ein leeres Ergebnis oder fehlende Profildaten bestehen die Abnahme nicht.
 
 ## Beobachtung aktivieren
 
-Erst wenn die drei manuellen Schritte erfolgreich sind:
+Nach bestandenem Live-Test und ausdrücklicher Startfreigabe unter
+**Settings → Secrets and variables → Actions → Variables** die Variable
+`MONITOR_ENABLED=true` setzen. Anschliessend den Workflow **Beobachtungsphase
+starten** beziehungsweise den Modus `activate` ausführen. Diese Vorbereitung
+startet beim Einspielen keinen laufenden Dienst und ruft keine X-Daten ab.
+Ein erfolgreicher vollständiger X-Test aus den letzten 24 Stunden ist für den
+Start erforderlich. Die Aktivierung setzt die Aufwärmzeit neu und wird bei
+Wiederholung nicht doppelt bestätigt.
 
-* Unter **Settings → Secrets and variables → Actions → Variables** eine
-  Repository-Variable `MONITOR_ENABLED` mit dem Wert `true` erstellen.
-* `SIGNAL_ALERTS_ENABLED` zunächst nicht setzen oder auf `false` lassen.
+`MONITOR_ENABLED=false` oder eine fehlende Variable pausiert den Zeitplan.
+`SIGNAL_ALERTS_ENABLED` zunächst nicht setzen oder auf `false` lassen.
+Eine Aktivierung mit bereits eingeschalteten Signalmeldungen wird abgebrochen.
 
 Der Workflow läuft dann ungefähr alle 30 Minuten, jeweils um Minute 07 und 37.
-Im Beobachtungsmodus schreibt er nur den privaten Zustand und eine kurze
-Zusammenfassung in die Workflow-Ausgabe. Es gibt keine automatischen
-Forschungsmeldungen in Telegram. Das Ausbleiben einer Meldung bedeutet daher
-zunächst nicht, dass der Agent ausgefallen ist.
+Im Beobachtungsmodus schreibt er die Ergebnisse in den privaten Zustand.
+Öffentliche Logs enthalten keine Postzahlen, Kandidatenzahlen, Ausschlusszähler
+oder Guthabennutzung. Es gibt zunächst keine automatischen Forschungsbeobachtungen
+in Telegram. Beim ersten erfolgreichen Lauf nach ungefähr 48 Stunden wird
+ein einmaliger privater Prüfbericht mit Datenmenge, Kandidatenprüfungen,
+Ausschlussgründen und Guthabennutzung zugestellt. Die Beobachtung läuft weiter.
+Der Bericht schaltet Signale nicht automatisch frei.
 
 Im Apify-Key-Value-Store `crypto-momentum-state-v1` liegt der Datensatz `STATE`.
 Das Feld `audit` zeigt Kandidatenzahlen und konkrete Ausschlussgründe. Nach

@@ -370,6 +370,56 @@ def alert_slots(state, now, config):
     return max(0, config["max_signals_per_day"] - used)
 
 
+def activate_observer(tg, state, api, now):
+    if os.environ.get("MONITOR_ENABLED") != "true":
+        raise Stop("Zeitplan ist nicht freigegeben. MONITOR_ENABLED zuerst auf true setzen")
+    if state.get("observer_started_at"):
+        print("Beobachtungsphase bereits aktiviert. Aufwärmzeit bleibt erhalten.")
+        return
+    verified = number(state.get("source_verified_at"))
+    if verified is None or not 0 <= now - verified <= 86400:
+        raise Stop("Zuerst den X-Datentest mit vollständigen Daten bestehen")
+    if os.environ.get("SIGNAL_ALERTS_ENABLED") == "true":
+        raise Stop("Für die Beobachtungsphase SIGNAL_ALERTS_ENABLED ausschalten")
+    state["observer_started_at"] = now
+    state["started_at"] = now
+    for item in state["watch"].values():
+        item["confirmations"] = 0
+        item.pop("last_eligible_at", None)
+    state["activation_notice"] = "reserved"
+    api.save(state)
+    tg.send(state["telegram"]["chat_id"], "Beobachtungsphase gestartet. Der Wächter prüft rund um die Uhr ungefähr alle 30 Minuten. Die Aufwärmphase dauert 90 Minuten. Nach etwa 48 Stunden folgt ein privater Prüfbericht. Automatische Handelssignale sind während dieser Testphase ausgeschaltet. Der Gratisbudget-Stopp bleibt aktiv.")
+    state["activation_notice"] = "sent"
+    api.save(state)
+    print("Beobachtungsphase erfolgreich aktiviert.")
+
+
+def send_review_if_due(tg, state, api, now, budget):
+    started = number(state.get("observer_started_at"))
+    if started is None or now - started < 48 * 3600 or state.get("review_notice"):
+        return
+    audits = [a for a in state["audit"] if a.get("at", 0) >= started and a.get("mode") == "observe"]
+    reasons = Counter()
+    for audit in audits:
+        reasons.update(audit.get("rejections") or {})
+    text = (
+        "Prüfbericht zur Beobachtungsphase\n"
+        f"Abgeschlossene Prüfungen: {len(audits)}\n"
+        f"Verarbeitete X-Datensätze einschliesslich Wiederholungen: {sum(a.get('rows', 0) for a in audits)}\n"
+        f"Kandidatenprüfungen einschliesslich Wiederholungen: {sum(a.get('candidates', 0) for a in audits)}\n"
+        f"Bestätigte Beobachtungen einschliesslich Wiederholungen: {sum(a.get('ready', 0) for a in audits)}\n"
+        f"Kontonutzung bei der letzten Budgetprüfung: USD {budget['used']:.3f}\n"
+        "Häufigste Ausschlussgründe:\n"
+        + ("\n".join(f"{count} × {html.escape(reason)}" for reason, count in reasons.most_common(4)) or "Bisher keine protokolliert.")
+        + "\nDer Beobachtungsmodus läuft weiter. Handelssignale bleiben ausgeschaltet. Bitte teile diesen Bericht für die Auswertung im Chat. Eine profitable Trefferquote ist damit noch nicht belegt."
+    )
+    state["review_notice"] = "reserved"
+    api.save(state)
+    tg.send(state["telegram"]["chat_id"], text)
+    state["review_notice"] = "sent"
+    api.save(state)
+
+
 def scan(http, api, tg, state, now, config, mode):
     budget = api.budget()
     if budget["remaining"] <= config["credit_reserve_usd"]:
@@ -454,6 +504,8 @@ def scan(http, api, tg, state, now, config, mode):
     state["audit"].append({"at": now, "rows": ingested, "candidates": len(candidates), "ready": len(ready), "rejections": dict(reasons), "mode": mode})
     state["audit"] = state["audit"][-336:]
     api.save(state)
+    if mode == "observe":
+        send_review_if_due(tg, state, api, now, budget)
     if mode == "signals":
         for score, key, m, s, t in sorted(ready, key=lambda v: v[0], reverse=True):
             send_at = time.time()
@@ -482,7 +534,7 @@ def scan(http, api, tg, state, now, config, mode):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=["pair", "check", "sample", "observe", "signals"])
+    parser.add_argument("mode", choices=["pair", "check", "sample", "activate", "observe", "signals"])
     args = parser.parse_args()
     config = json.loads((ROOT / "config.json").read_text())
     # A public repository must use a free standard runner. Never silently run on
@@ -503,6 +555,11 @@ def main():
     bot = tg.call("getMe")
     if not link.get("chat_id") or link.get("bot_id") != bot.get("id"):
         raise Stop("Telegram noch nicht gekoppelt. Zuerst pair starten")
+    if args.mode == "activate":
+        activate_observer(tg, state, api, now)
+        return
+    if args.mode in {"observe", "signals"} and not state.get("observer_started_at"):
+        raise Stop("Beobachtungsphase zuerst mit activate starten")
     if args.mode == "check":
         pairs = dex_pairs(http, KNOWN_SOL)
         if not pairs:

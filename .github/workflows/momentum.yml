@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "pair: Telegram koppeln; check: Dienste testen; sample: X testen; observe: prüfen; signals: Beobachtungen senden"
+        description: "pair: Telegram koppeln; check: Dienste testen; sample: X testen; activate: Beobachtung starten; observe: prüfen; signals: Beobachtungen senden"
         required: true
         type: choice
         default: check
-        options: [pair, check, sample, observe, signals]
+        options: [pair, check, sample, activate, observe, signals]
   schedule:
     - cron: '7,37 * * * *'
 
@@ -21,6 +21,7 @@ concurrency:
 
 jobs:
   monitor:
+    # Ongoing observation remains off until explicitly enabled.
     if: github.event_name == 'workflow_dispatch' || vars.MONITOR_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -29,6 +30,7 @@ jobs:
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_PAIR_CODE: ${{ secrets.TELEGRAM_PAIR_CODE }}
       PORTFOLIO_CHF: ${{ secrets.PORTFOLIO_CHF }}
+      MONITOR_ENABLED: ${{ vars.MONITOR_ENABLED }}
       SIGNAL_ALERTS_ENABLED: ${{ vars.SIGNAL_ALERTS_ENABLED }}
       REPOSITORY_VISIBILITY: ${{ github.event.repository.visibility }}
     steps:
