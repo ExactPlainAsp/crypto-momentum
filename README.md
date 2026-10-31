@@ -4,9 +4,10 @@ Vorbereiteter Beobachtungsagent für X, kostenlose Marktdaten und Telegram.
 Stand: 31. Oktober 2026. Telegram, Apify-Free, DexScreener und der
 Sicherheitsdienst wurden authentifiziert geprüft. Die aktuelle Crypto-Suche
 liefert einen Post mit den nötigen Account- und Engagementdaten; die private
-Testbestätigung wurde von Telegram angenommen. Die Beobachtungsphase und ihr
-einmaliger privater Prüfbericht nach ungefähr 48 Stunden sind vorbereitet.
-Der Zeitplan bleibt bis zur ausdrücklichen Startfreigabe ausgeschaltet.
+Testbestätigung wurde von Telegram angenommen. Der Nutzer hat die Beobachtungsphase
+am 31. Oktober ausdrücklich freigegeben. Der Aktivierungsworkflow startet sie und
+bestätigt den Start privat per Telegram. Ein einmaliger privater Prüfbericht folgt
+nach ungefähr 48 Stunden. Automatische Handelssignale bleiben ausgeschaltet.
 
 ## Was diese Version tut
 
@@ -155,18 +156,18 @@ eintragen. Nur die dafür vorgesehenen geschützten Secrets verwenden.
 
 ## Beobachtung aktivieren
 
-Nach bestandenem Live-Test und ausdrücklicher Startfreigabe unter
-**Settings → Secrets and variables → Actions → Variables** die Variable
-`MONITOR_ENABLED=true` setzen. Anschliessend den Workflow **Beobachtungsphase
-starten** beziehungsweise den Modus `activate` ausführen. Diese Vorbereitung
-startet beim Einspielen keinen laufenden Dienst und ruft keine X-Daten ab.
-Ein erfolgreicher vollständiger X-Test aus den letzten 24 Stunden ist für den
-Start erforderlich. Die Aktivierung setzt die Aufwärmzeit neu und wird bei
-Wiederholung nicht doppelt bestätigt.
+Die ausdrückliche Startfreigabe wurde am 31. Oktober 2026 erteilt.
+Der Workflow **Beobachtungsphase starten** wird beim Einspielen der Aktivierung
+einmalig gestartet. Ein erfolgreicher vollständiger X-Test aus den letzten
+24 Stunden ist dafür erforderlich. Die Aktivierung setzt die Aufwärmzeit neu
+und wird bei Wiederholung nicht doppelt bestätigt. Anschliessend führt der
+Workflow den ersten Abruf aus, sofern das 30-Minuten-Fenster noch frei ist.
 
-`MONITOR_ENABLED=false` oder eine fehlende Variable pausiert den Zeitplan.
-`SIGNAL_ALERTS_ENABLED` zunächst nicht setzen oder auf `false` lassen.
-Eine Aktivierung mit bereits eingeschalteten Signalmeldungen wird abgebrochen.
+`MONITOR_ENABLED` darf fehlen oder `true` sein. Unter **Settings → Secrets and
+variables → Actions → Variables** pausiert ein ausdrückliches
+`MONITOR_ENABLED=false` den Zeitplan. Diese Pause wird auch beim Start beachtet.
+`SIGNAL_ALERTS_ENABLED` ist während dieser Beobachtungsphase in beiden Workflows
+fest auf `false` gesetzt.
 
 Der Workflow läuft dann ungefähr alle 30 Minuten, jeweils um Minute 07 und 37.
 Im Beobachtungsmodus schreibt er die Ergebnisse in den privaten Zustand.
@@ -181,11 +182,12 @@ Im Apify-Key-Value-Store `crypto-momentum-state-v1` liegt der Datensatz `STATE`.
 Das Feld `audit` zeigt Kandidatenzahlen und konkrete Ausschlussgründe. Nach
 mindestens 48 bis 72 Stunden die Datenlücken, Guthabennutzung und ausgeschlossenen
 Kandidaten prüfen. Dieser kurze Test prüft die Funktion, noch keine profitable
-Trefferquote. Erst nach ausreichender Prüfung können Forschungsbeobachtungen mit
-der Variable `SIGNAL_ALERTS_ENABLED=true` freigeschaltet werden. Dies ändert die
+Trefferquote. Erst nach ausreichender Prüfung und gesonderter Freigabe kann
+`SIGNAL_ALERTS_ENABLED` im Workflow wieder an die Repository-Variable gebunden
+und diese auf `true` gesetzt werden. Dies ändert die
 Verlust- und Manipulationsrisiken nicht.
 
-Ein manuelles `signals` funktioniert ebenfalls nur mit dieser Variable. Zum
+Ein manuelles `signals` funktioniert ebenfalls nur mit freigegebenem Wert `true`. Zum
 Pausieren `MONITOR_ENABLED=false` setzen. Manuelle Verbindungstests sind zusätzliche
 Testnachrichten; die Grenze von zwei gilt für automatische Forschungsbeobachtungen.
 

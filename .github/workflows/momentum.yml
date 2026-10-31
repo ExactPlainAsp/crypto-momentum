@@ -21,8 +21,9 @@ concurrency:
 
 jobs:
   monitor:
-    # Ongoing observation remains off until explicitly enabled.
-    if: github.event_name == 'workflow_dispatch' || vars.MONITOR_ENABLED == 'true'
+    # Ongoing observation explicitly approved by the owner on 2026-10-31.
+    # An explicit false remains an immediate pause control.
+    if: github.event_name == 'workflow_dispatch' || vars.MONITOR_ENABLED != 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -30,8 +31,8 @@ jobs:
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_PAIR_CODE: ${{ secrets.TELEGRAM_PAIR_CODE }}
       PORTFOLIO_CHF: ${{ secrets.PORTFOLIO_CHF }}
-      MONITOR_ENABLED: ${{ vars.MONITOR_ENABLED }}
-      SIGNAL_ALERTS_ENABLED: ${{ vars.SIGNAL_ALERTS_ENABLED }}
+      MONITOR_ENABLED: ${{ vars.MONITOR_ENABLED || 'true' }}
+      SIGNAL_ALERTS_ENABLED: 'false'
       REPOSITORY_VISIBILITY: ${{ github.event.repository.visibility }}
     steps:
       - name: Code laden

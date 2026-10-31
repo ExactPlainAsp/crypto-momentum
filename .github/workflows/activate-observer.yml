@@ -1,6 +1,10 @@
 name: Beobachtungsphase starten
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/activate-observer.yml'
   workflow_dispatch:
 
 permissions:
@@ -17,8 +21,8 @@ jobs:
     env:
       APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-      MONITOR_ENABLED: ${{ vars.MONITOR_ENABLED }}
-      SIGNAL_ALERTS_ENABLED: ${{ vars.SIGNAL_ALERTS_ENABLED }}
+      MONITOR_ENABLED: ${{ vars.MONITOR_ENABLED || 'true' }}
+      SIGNAL_ALERTS_ENABLED: 'false'
       REPOSITORY_VISIBILITY: ${{ github.event.repository.visibility }}
     steps:
       - name: Code laden
@@ -33,3 +37,26 @@ jobs:
         run: python -m unittest discover -s tests -q
       - name: Beobachtung nach bestandenem Live-Test aktivieren
         run: python agent.py activate
+      - name: Ersten verfügbaren Beobachtungslauf ausführen
+        run: |
+          python - <<'PY'
+          import json
+          import subprocess
+          import time
+          from agent import Apify, HTTP, Stop, secret
+          try:
+              config = json.load(open("config.json"))
+              api = Apify(HTTP(), secret("APIFY_TOKEN"), config)
+              api.budget()
+              state = api.load()
+              if state.get("reserved_bucket") == int(time.time() // 1800):
+                  print("Beobachtung aktiviert. Nächster Abruf erfolgt über den Zeitplan.")
+              else:
+                  subprocess.run(["python", "agent.py", "observe"], check=True)
+          except Stop as exc:
+              print("GESTOPPT:", str(exc))
+              raise SystemExit(1)
+          except Exception:
+              print("GESTOPPT: Erster Beobachtungslauf konnte nicht abgeschlossen werden.")
+              raise SystemExit(1)
+          PY
