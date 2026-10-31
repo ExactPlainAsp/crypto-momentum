@@ -7,7 +7,7 @@ from unittest.mock import patch
 from datetime import datetime
 from pathlib import Path
 
-from agent import (ActorFinishedError, Stop, alert_slots, ingest, row_price,
+from agent import (ActorFinishedError, Apify, Stop, alert_slots, ingest, row_price,
                    pairing_candidates, scan, validate_free_plan)
 from signals import (addresses, confirmed, normalise_tweet, number,
                      security_checks, select_market, social_metrics, trade_sample)
@@ -274,6 +274,39 @@ class CostGuards(unittest.TestCase):
               patch("agent.time.time", return_value=NOW)):
             scan(None, API(), TG(), state, NOW, C, "signals")
         self.assertEqual(state["alerts"], [])
+
+
+class SpendingLimit(unittest.TestCase):
+    def test_cent_ceiling_preserves_requested_result_limit(self):
+        from urllib.parse import parse_qs, urlsplit
+        for count in [1, 16]:
+            calls = []
+            api = Apify(None, "unused-test-token", C)
+            def call(path, method="GET", payload=None):
+                calls.append((path, method, payload))
+                if method == "GET":
+                    return {"data": {"pricingInfos": [{"startedAt": NOW-1, "pricingModel": "PAY_PER_EVENT",
+                        "pricingPerEvent": {"actorChargeEvents": {"tweet": {
+                        "eventPriceUsd": .00015, "isPrimaryEvent": True}}}}]}}
+                return {"data": {"id": "test-run"}}
+            api.call = call
+            self.assertEqual(api.start_x({"maxItems": count}, NOW), "test-run")
+            path, method, payload = calls[-1]
+            params = parse_qs(urlsplit(path).query)
+            self.assertEqual(params["maxTotalChargeUsd"], ["0.01"])
+            self.assertEqual(payload["maxItems"], count)
+            self.assertEqual(params["timeout"], ["45"])
+
+    def test_price_increase_still_blocks_start(self):
+        api = Apify(None, "unused-test-token", C)
+        def call(path, method="GET", payload=None):
+            self.assertEqual(method, "GET", "Price guard must stop before a new run")
+            return {"data": {"pricingInfos": [{"startedAt": NOW-1, "pricingModel": "PAY_PER_EVENT",
+                "pricingPerEvent": {"actorChargeEvents": {"tweet": {
+                "eventPriceUsd": .00016, "isPrimaryEvent": True}}}}]}}
+        api.call = call
+        with self.assertRaises(Stop):
+            api.start_x({"maxItems": 16}, NOW)
 
 
 class Pairing(unittest.TestCase):

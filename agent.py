@@ -18,6 +18,7 @@ import urllib.parse
 import urllib.request
 from collections import Counter
 from datetime import datetime, timezone
+from decimal import Decimal, ROUND_CEILING
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -146,8 +147,10 @@ class Apify:
 
     def start_x(self, inputs, now):
         price = row_price(self.call("acts/" + self.config["apify_actor"])["data"], now, self.config)
-        cap = inputs["maxItems"] * price + 0.000001
-        args = urllib.parse.urlencode({"timeout": 45, "memory": 256, "maxTotalChargeUsd": f"{cap:.6f}"})
+        # Fractional-cent limits stopped the public one-row probe as budget_limited.
+        # Round the spending ceiling up to cents; maxItems still caps result rows.
+        cap = (Decimal(inputs["maxItems"]) * Decimal(str(price))).quantize(Decimal("0.01"), rounding=ROUND_CEILING)
+        args = urllib.parse.urlencode({"timeout": 45, "memory": 256, "maxTotalChargeUsd": f"{cap:.2f}"})
         return self.call("acts/" + self.config["apify_actor"] + "/runs?" + args, "POST", inputs)["data"]["id"]
 
     def finish_x(self, run_id):

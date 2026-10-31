@@ -75,7 +75,7 @@ def main():
     if budget["remaining"] <= config["credit_reserve_usd"]:
         raise Stop("Gratisbudget-Grenze erreicht")
     state = api.load()
-    probe = state.setdefault("public_fixture", {})
+    probe = state.setdefault("public_fixture_cent_cap", {})
     if not probe.get("attempted"):
         probe["attempted"] = time.time()
         api.save(state)

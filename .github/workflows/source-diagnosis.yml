@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/source-diagnosis.yml'
+      - 'diagnose_x.py'
   workflow_dispatch:
 
 permissions:
